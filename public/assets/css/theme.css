@@ -1,0 +1,18 @@
+:root {
+        --wg-roundness: 0;
+        --wg-spacing: 1;
+        --wg-shadow: 0;
+      }
+    :where([data-wg-roundness="0"]) { --wg-roundness: 0; }
+:where([data-wg-roundness="1"]) { --wg-roundness: 6px; }
+:where([data-wg-roundness="2"]) { --wg-roundness: 16px; }
+:where([data-wg-roundness="3"]) { --wg-roundness: 32px; }
+:where([data-wg-spacing="0"]) { --wg-spacing: 0.5; }
+:where([data-wg-spacing="1"]) { --wg-spacing: 0.75; }
+:where([data-wg-spacing="2"]) { --wg-spacing: 1; }
+:where([data-wg-spacing="3"]) { --wg-spacing: 1.25; }
+:where([data-wg-spacing="4"]) { --wg-spacing: 1.5; }
+:where([data-wg-shadow="0"]) { --wg-shadow: 0; }
+:where([data-wg-shadow="1"]) { --wg-shadow: 0 2px 4px rgba(0, 0, 0, 0.075); }
+:where([data-wg-shadow="2"]) { --wg-shadow: 0 8px 16px rgba(0, 0, 0, 0.15); }
+:where([data-wg-shadow="3"]) { --wg-shadow: 0 16px 48px rgba(0, 0, 0, 0.175); }
