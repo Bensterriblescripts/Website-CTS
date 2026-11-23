@@ -22,15 +22,4 @@
       review.remove();
     });
   }
-
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })
-      .formatToParts(new Date())
-      .map((part) => [part.type, part.value]),
-  );
-  const day = Number(parts.day);
-  const suffix = day % 100 >= 11 && day % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][day % 10] ?? 'th';
-  for (const element of document.querySelectorAll('.last-updated')) {
-    element.textContent = `${day}${suffix} ${parts.month}, ${parts.year}`;
-  }
 })();

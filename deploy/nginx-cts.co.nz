@@ -1,0 +1,68 @@
+server {
+    listen 127.0.0.1:8080;
+    server_name cts.co.nz www.cts.co.nz voipit.co.nz www.voipit.co.nz ctsvoice.co.nz www.ctsvoice.co.nz;
+
+    if ($block_request) {
+        return 403;
+    }
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    client_max_body_size 1m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_hide_header Strict-Transport-Security;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Referrer-Policy;
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+
+    location / {
+        proxy_pass http://192.168.5.160:9050;
+    }
+}
+
+server {
+    listen 127.0.0.1:8080;
+    server_name cts.build.kiwi;
+
+    if ($block_request) {
+        return 403;
+    }
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    client_max_body_size 1m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host www.cts.co.nz;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_hide_header Strict-Transport-Security;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Referrer-Policy;
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+
+    location / {
+        proxy_pass http://192.168.5.160:9050;
+    }
+}

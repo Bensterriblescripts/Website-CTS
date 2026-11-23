@@ -59,24 +59,24 @@ async fn site(State(config): State<Arc<Config>>, mut request: Request, next: Nex
     let query = uri.query();
 
     if let Some(canonical) = &config.canonical_host {
-        let host_matches = request
+        let host = request
             .headers()
             .get(header::HOST)
             .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.split_once(':').map_or(v, |(host, _)| host).eq_ignore_ascii_case(canonical));
-        if !host_matches {
-            let path_and_query = uri.path_and_query().map_or("/", |pq| pq.as_str());
+            .map(|v| v.split_once(':').map_or(v, |(host, _)| host).trim_end_matches('.').to_ascii_lowercase());
+        if !host.as_deref().is_some_and(|host| host.eq_ignore_ascii_case(canonical)) {
+            let alias_page = match host.as_deref().map(|host| host.strip_prefix("www.").unwrap_or(host)) {
+                Some("voipit.co.nz") => Some("/pbx-phone-system-kapiti-coast"),
+                Some("ctsvoice.co.nz") => Some("/phone-voip-kapiti-coast"),
+                _ => None,
+            };
+            let path_and_query = match alias_page {
+                Some(page) if path == "/" => {
+                    query.map_or_else(|| page.to_string(), |query| format!("{page}?{query}"))
+                }
+                _ => uri.path_and_query().map_or("/", |pq| pq.as_str()).to_string(),
+            };
             return redirect(HeaderValue::try_from(format!("https://{canonical}{path_and_query}")).unwrap());
-        }
-    }
-
-    if path == "/" {
-        if let Some(action) = query.unwrap_or("").split('&').find_map(|pair| pair.strip_prefix("Action=")) {
-            return redirect(HeaderValue::from_static(match action {
-                "PrivPol" => "/privacy-policy",
-                "SiteMap" => "/site-map",
-                _ => "/",
-            }));
         }
     }
 
@@ -265,6 +265,9 @@ async fn main() {
         }
     }
     tracing::info!(compressed, failed, elapsed = ?started.elapsed(), "precompressed assets");
+    if std::env::args().nth(1).as_deref() == Some("--precompress") {
+        std::process::exit(if failed == 0 { 0 } else { 1 });
+    }
     let config = Arc::new(Config {
         public,
         canonical_host: std::env::var("CTS_CANONICAL_HOST").ok().filter(|v| !v.is_empty()),

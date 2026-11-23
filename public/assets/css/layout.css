@@ -318,8 +318,7 @@ body {
 
 .device-desktop .sector-Form .SectionContent h1,
 .device-desktop .sector-Form .SectionContent h2,
-.device-desktop .sector-Form .SectionContent,
-.device-desktop .sector-Form .privacy-policy-link{
+.device-desktop .sector-Form .SectionContent{
   text-align: center;
   display: block;
 }
@@ -460,8 +459,8 @@ body {
 
 .sector-navbar-wrapper{
   /*background:#dedede;*/
-  margin-top: -4%;
-  
+  margin-top: max(-4%, -63px);
+
 }
 
 .scp-wrapper{
@@ -554,4 +553,18 @@ body {
 }
 .device-desktop .navbar .nav-item.active a, .device-desktop .navbar ul li a:hover{
   border-bottom: 2px solid #0f105c;
+}
+
+.device-desktop .Header-wrapper .column-wrapper.bp-63fd2da38a37baae6ec1c839{
+  display: none;
+}
+
+.device-desktop .Header-wrapper .column-wrapper.bp-6351fdd8886187c98f43cc69{
+  width: 75%;
+  padding-left: 0;
+}
+
+.device-desktop .header-tagline{
+  white-space: nowrap;
+  font-size: min(18px, calc((75vw - 160px) / 51.4));
 }

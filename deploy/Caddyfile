@@ -1,3 +1,0 @@
-cts.co.nz, www.cts.co.nz {
-	reverse_proxy 127.0.0.1:8080
-}
