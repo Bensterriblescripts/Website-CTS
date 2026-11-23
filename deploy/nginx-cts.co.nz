@@ -1,6 +1,19 @@
 server {
     listen 127.0.0.1:8080;
-    server_name cts.co.nz www.cts.co.nz voipit.co.nz www.voipit.co.nz ctsvoice.co.nz www.ctsvoice.co.nz;
+    server_name cts.co.nz voipit.co.nz www.voipit.co.nz ctsvoice.co.nz www.ctsvoice.co.nz;
+
+    if ($block_request) {
+        return 403;
+    }
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    return 301 https://www.cts.co.nz$request_uri;
+}
+
+server {
+    listen 127.0.0.1:8080;
+    server_name www.cts.co.nz;
 
     if ($block_request) {
         return 403;

@@ -1,9 +1,10 @@
 use axum::{
-    Router,
-    extract::{ConnectInfo, Request, State},
+    Form, Router,
+    extract::{ConnectInfo, DefaultBodyLimit, Request, State},
     http::{HeaderValue, StatusCode, Uri, header, uri::PathAndQuery},
     middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
+    routing::post,
 };
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::{collections::HashSet, io::Write, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
@@ -24,6 +25,28 @@ struct Config {
     public: PathBuf,
     canonical_host: Option<String>,
     pages: HashSet<Box<str>>,
+    http: reqwest::Client,
+    tenant_id: String,
+    client_id: String,
+    client_secret: String,
+    mail_from: String,
+    mail_to: String,
+}
+
+#[derive(serde::Deserialize)]
+struct Enquiry {
+    #[serde(rename = "6351fdd8886187c98f43cc3d", default)]
+    first_name: String,
+    #[serde(rename = "6351fdd8886187c98f43cc3e", default)]
+    last_name: String,
+    #[serde(rename = "6351fdd8886187c98f43cc3f", default)]
+    email: String,
+    #[serde(rename = "6351fdd8886187c98f43cc40", default)]
+    phone: String,
+    #[serde(rename = "636a02e51d8caaf6a771898a", default)]
+    suburb: String,
+    #[serde(rename = "6351fdd8886187c98f43cc41", default)]
+    message: String,
 }
 
 const LEGACY_FILES: &[(&str, &str)] = &[
@@ -268,12 +291,135 @@ async fn main() {
     if std::env::args().nth(1).as_deref() == Some("--precompress") {
         std::process::exit(if failed == 0 { 0 } else { 1 });
     }
+    let required = |key: &str| {
+        std::env::var(key)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| panic!("{key} must be set"))
+    };
     let config = Arc::new(Config {
         public,
         canonical_host: std::env::var("CTS_CANONICAL_HOST").ok().filter(|v| !v.is_empty()),
         pages,
+        http: reqwest::Client::builder().timeout(Duration::from_secs(10)).build().expect("could not build http client"),
+        tenant_id: required("CTS_TENANT_ID"),
+        client_id: required("CTS_CLIENT_ID"),
+        client_secret: required("CTS_CLIENT_SECRET"),
+        mail_from: required("CTS_MAIL_FROM"),
+        mail_to: required("CTS_MAIL_TO"),
     });
     let app = Router::new()
+        .route(
+            "/enquiry",
+            post(|State(config): State<Arc<Config>>, Form(enquiry): Form<Enquiry>| async move {
+                let first_name = enquiry.first_name.trim();
+                let last_name = enquiry.last_name.trim();
+                let email = enquiry.email.trim();
+                let phone = enquiry.phone.trim();
+                let suburb = enquiry.suburb.trim();
+                let message = enquiry.message.trim();
+                let valid = first_name.len() <= 200
+                    && last_name.len() <= 200
+                    && email.len() <= 254
+                    && email.contains('@')
+                    && !email.starts_with('@')
+                    && !email.ends_with('@')
+                    && !email.chars().any(|c| c.is_whitespace() || c.is_control())
+                    && phone.len() <= 50
+                    && suburb.len() <= 200
+                    && message.len() <= 8000;
+                if !valid {
+                    tracing::info!(email, "enquiry rejected as invalid");
+                    return Redirect::to("/enquiry-not-sent");
+                }
+                let name = format!("{first_name} {last_name}").trim().to_string();
+                tracing::info!(name, email, phone, suburb, message, "enquiry received");
+
+                let token = match config
+                    .http
+                    .post(format!("https://login.microsoftonline.com/{}/oauth2/v2.0/token", config.tenant_id))
+                    .form(&[
+                        ("client_id", config.client_id.as_str()),
+                        ("client_secret", config.client_secret.as_str()),
+                        ("scope", "https://graph.microsoft.com/.default"),
+                        ("grant_type", "client_credentials"),
+                    ])
+                    .send()
+                    .await
+                {
+                    Ok(response) if response.status().is_success() => match response.json::<serde_json::Value>().await {
+                        Ok(body) => body["access_token"].as_str().map(str::to_string),
+                        Err(error) => {
+                            tracing::error!(%error, "enquiry not sent: token response unreadable");
+                            None
+                        }
+                    },
+                    Ok(response) => {
+                        let status = response.status();
+                        let body = response.text().await.unwrap_or_default();
+                        tracing::error!(%status, body, "enquiry not sent: token request failed");
+                        None
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, "enquiry not sent: token request error");
+                        None
+                    }
+                };
+                let Some(token) = token else {
+                    return Redirect::to("/enquiry-not-sent");
+                };
+
+                let or_dash = |value: &str| if value.is_empty() { "-".to_string() } else { value.to_string() };
+                let subject: String = format!("Website enquiry from {}", if name.is_empty() { email } else { name.as_str() })
+                    .chars()
+                    .map(|c| if c.is_control() { ' ' } else { c })
+                    .collect();
+                let body = format!(
+                    "Name: {}\nEmail: {email}\nPhone: {}\nSuburb: {}\n\n{}\n",
+                    or_dash(&name),
+                    or_dash(phone),
+                    or_dash(suburb),
+                    or_dash(message),
+                );
+                let mut reply_to = serde_json::json!({ "address": email });
+                if !name.is_empty() {
+                    reply_to["name"] = serde_json::Value::from(name.as_str());
+                }
+                let payload = serde_json::json!({
+                    "message": {
+                        "subject": subject,
+                        "body": { "contentType": "Text", "content": body },
+                        "toRecipients": [{ "emailAddress": { "address": config.mail_to } }],
+                        "replyTo": [{ "emailAddress": reply_to }],
+                    },
+                    "saveToSentItems": false,
+                });
+                match config
+                    .http
+                    .post(format!("https://graph.microsoft.com/v1.0/users/{}/sendMail", config.mail_from))
+                    .bearer_auth(token)
+                    .json(&payload)
+                    .send()
+                    .await
+                {
+                    Ok(response) if response.status().is_success() => {
+                        tracing::info!(email, "enquiry sent");
+                        Redirect::to("/thank-you")
+                    }
+                    Ok(response) => {
+                        let status = response.status();
+                        let body = response.text().await.unwrap_or_default();
+                        tracing::error!(%status, body, "enquiry not sent: sendMail failed");
+                        Redirect::to("/enquiry-not-sent")
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, "enquiry not sent: sendMail error");
+                        Redirect::to("/enquiry-not-sent")
+                    }
+                }
+            })
+            .layer(DefaultBodyLimit::max(64 * 1024)),
+        )
         .fallback_service(
             ServeDir::new(&config.public)
                 .precompressed_br()
@@ -298,7 +444,8 @@ async fn main() {
                 })
                 .on_response(DefaultOnResponse::new().level(Level::INFO))
                 .on_failure(DefaultOnFailure::new().level(Level::WARN)),
-        );
+        )
+        .with_state(config.clone());
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("listening on http://{addr}");
     let mut http = hyper::server::conn::http1::Builder::new();
